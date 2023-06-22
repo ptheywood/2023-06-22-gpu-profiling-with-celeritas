@@ -1,0 +1,528 @@
+---
+title: "GPU Profiling with Celeritas"
+author: 
+  - "Peter Heywood, Research Software Engineer"
+institute: 
+  - "The University of Sheffield"
+date: "2023-06-22"
+logo: ./img/UOSLogo_Primary_Violet_RGB.svg
+footer: "GPU Profiling with Celeritas - [ExaTEPP workshop](https://indico.cern.ch/event/1287030/)"
+
+format:
+  revealjs:
+    theme: theme/tuos.scss
+    embed-resources: true  # only enable when publish-ready for perf reasons
+    template-partials: 
+      - title-slide.html
+    # show-notes: separate-page
+    slide-number: c
+    width: 1050
+    height: 700
+    margin: 0.1
+    min-scale: 0.2
+    max-scale: 2.0
+    auto-stretch: false
+    fontsize: 32px
+
+# title slide background
+title-slide-attributes:
+  data-background-color: "#9ADBE8" # $tuos-powder-blue
+  # data-background-color: "#D7F1F6" # $tuos-powder-blue-40
+
+# https://quarto.org/docs/presentations/revealjs
+---
+
+## Increase Science Throughput
+
++ Ever-increasing demand for increased simulation throughput
+
+1. Buy more / "better" hardware
+2. Improve Software
+    + Improve implementations
+    + Improve algorithms (i.e. work efficiency)
+
+Must understand software performance to improve performance
+
+::: {.call-to-action .fragment}
+
+**Profile**
+
+:::
+
+
+<!-- ## Benchmarking & Profiling
+
+#### Benchmarking
+
+Time execution, compare against other implementations
+
+#### Profiling
+
+Investigate where time is spent within an implementation, and consider how to improve it.
+
+* Get more physics done.
+* Get more performance out of hardware
+* Get more value from hardware
+ -->
+
+<!-- I didn't know the crowd, don't know the bakground so thought I'd push for profiling -->
+<!-- As mentioned yesteday, there's increasing computational demand, that is outstripping, and new hardware can't keep up. So improve software perf /effficiency -->
+
+
+
+## Celeritas
+
+> Celeritas is a new Monte Carlo transport code designed for high-performance simulation of high-energy physics detectors.
+
+> The Celeritas project implements HEP detector physics on GPU accelerator hardware with the ultimate goal of supporting the massive computational requirements of the HL-LHC upgrade.
+
++ [github.com/celeritas-project/celeritas](https://github.com/celeritas-project/celeritas)
+
++ NVIDIA GPUs via [CUDA](https://developer.nvidia.com/cuda-toolkit)
++ AMD GPUs via [HIP](https://github.com/ROCm-Developer-Tools/HIP) 
+
++ [Ben Morgan - "Detector Simulations in Particle
+Physics"](https://indico.cern.ch/event/1287030/contributions/5449366/attachments/2669935/4627997/ExaTEPPDetectorSimulation210623.pdf) 
+
+## Profiling Tools
+
+::: {}
+
++ CPU-only profilers
+  + `gprof`, `perf`, Kcachegrind, VTune, ...
+:::
+
+:::: {.columns}
+
+::: {.column width="50%" .bg-darker}
+
++ **NVIDIA Profiling tools**
+  + **[Nsight Systems](https://developer.nvidia.com/nsight-systems)**
+  + **[NVIDIA Nsight Compute](https://developer.nvidia.com/nsight-compute)**
+  + `nvprof`
+:::
+
+::: {.column width="50%"}
+
++ AMD Profiling tools
+  + `roctracer`
+  + `rocsys`
+  + `rocprofv2`
+:::
+
+::::
+
+## Hardware
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
++ Development machine:
+  + NVIDIA Titan V (SM 70, 250W)
+  + NVIDIA Titan RTX (SM 75, 280W)
+    + 16x fewer FP64 units
+  + Intel i7-6850K
+
++ HPC:
+  + NVIDIA H100 PCI-e (SM 90, 350W)
+  + AMD EPYC 7413
+
+:::
+
+::: {.column width="50%"}
+
+![Titan Xp & Titan V GPUs](img/2-titan-xp-2-titan-v.jpg)
+
+:::
+
+::::
+
+## Inputs / Configuration
+
++ Inputs should ideally be:
+  + Representative of real-world use
+  + Large enough to fully utilise hardware
+  + Small enough to generate usable profile data
+    <!-- + Iterative profile-optimise loop -->
+  <!-- + For GPUs, this means wide (parellel) but short -->
+
++ Optimised build
+  + `-DCMAKE_BUILD_TYPE=Release`, `-O3`
+  + `-DCMAKE_BUILD_TYPE=RelWithDebInfo`, `-O2 -g`
+
+
++ Celeritas `c8db3fce`, `v0.3.0`
++ MPI disabled via `export CELER_DISABLE_PARALLEL=1`
+<!-- + Celeritas config: novecgeom?  -->
+
+
+
+## Profile Scenario: Simple CMS
+
+:::: {.columns}
+
+::: {.column width="50%" .smaller}
+
++ `celer-sim` test case
++ Simple geometry
++ Short running
++ `simple-cms.gdml`
++ `gamma-3evt-15prim.hepmc3`
++ `ctest -R app/celer-sim:device` 
+
+:::
+
+::: {.column width=50%}
+
+![github.com/celeritas-project/benchmarks/geant4-validation-app/testem3_evd.png](img/celeritas-project/benchmarks/geant4-validation-app/simple_cms_evd.png){.center.smaller width="100%"}
+
+:::
+
+::::
+
+
+## Profile Scenario: TestEm3
+
+
+:::: {.columns}
+
+::: {.column width="50%" .smaller}
+
++ `celer-g4`
++ `testem3-flat.gdml`
++ `testem3.1k.hepmc3`
+
+```
+/control/verbose 0
+/tracking/verbose 0
+/run/verbose 0
+/event/verbose 0
+
+/celer/outputFile testem3-1k.out.json
+/celer/maxNumTracks 524288
+/celer/maxNumEvents 2048
+/celer/maxInitializers 4194304
+/celer/secondaryStackFactor 3
+
+/celerg4/geometryFile /celeritas/test/celeritas/data/testem3-flat.gdml
+/celerg4/eventFile /benchmarks/testem3.1k.hepmc3
+```
+
+:::
+
+::: {.column width=50%}
+
+![github.com/celeritas-project/benchmarks/geant4-validation-app/simple_cms_evd.png](img/celeritas-project/benchmarks/geant4-validation-app/testem3_evd.png){.center.smaller width="100%"}
+
+
+:::
+
+::::
+
+# Nsight Systems {.divider .teal}
+
+## Nsight Systems
+
++ System-wide performance analysis
++ CPU + GPU 
++ Visualise a timeline of events
++ CUDA API information, kernel block sizes etc
++ Pascal GPUs or newer (SM 60+)
+
+```bash
+nsys profile -o timeline ./celer-g4 input.mac
+nsys-ui timeline.nsys-rep
+```
+
+# Nsight Systems: Simple CMS {.divider .flamingo}
+
+## Timeline: Simple CMS (Titan V) {.smalltitle}
+
+![](img/nsys-overview-simple-titanv-gpu-zoom.png){fig-alt="Timeline view for simple cms " width="100%" height="100%"}
+
+<!-- uninteresting use case, but if it were, we'd improve latency -->
+
+## Timeline: Simple CMS (Titan V) {.smalltitle}
+
+![](img/nsys-overview-simple-titanv-gpu-zoom2.png){fig-alt="Timeline view for simple cms " width="100%" height="100%"}
+
+## Timeline: Simple CMS (Titan V) {.smalltitle}
+
+![](img/nsys-overview-simple-titanv-gpu-zoom4.png){fig-alt="Timeline view for simple cms " width="100%" height="100%"}
+
+## Nsys Table: Simple CMS (Titan V)  {.smalltitle}
+
+![](img/nsys-simple-titanv-table-duration-desc.png)
+
++ Longest kernel: `88us`
++ Launch latency: `5.2us`
++ Threads: `16 * 256`
+
+# Nsight Systems: TestEm3 {.divider .flamingo}
+
+## Timeline: TestEm3 (Titan V)  {.smalltitle}
+
+![](img/nsys-overiview-em3-titanv.png){fig-alt="Timeline view for TestEm3" width="100%" height="100%"}
+
+## Timeline: TestEm3 (Titan V) Profiling Overheads {.smalltitle}
+
+![](img/nsys-overiview-overheads-em3-titanv.png){fig-alt="Timeline view for TestEm3" width="100%" height="100%"}
+
+
+## Timeline: TestEm3 (Titan V) GPU Init {.smalltitle}
+
+![](img/nsys-overiview-deviceinit-em3-titanv.png
+){fig-alt="Timeline view for TestEm3" width="100%" height="100%"}
+
+## Timeline: TestEm3 (Titan V) GPU region  {.smalltitle}
+
+![](img/nsys-overiview-gpu-region-em3-titanv.png){fig-alt="Timeline view for TestEm3" width="100%" height="100%"}
+
+## Timeline: TestEm3 (Titan V) GPU region  {.smalltitle}
+
+![](img/nsys-overiview-gpu-zoom1-em3-titanv.png){fig-alt="Timeline view for TestEm3" width="100%" height="100%"}
+
+## Timeline: TestEm3 (Titan V) GPU region  {.smalltitle}
+
+![](img/nsys-overiview-gpu-zoom2-em3-titanv.png){fig-alt="Timeline view for TestEm3" width="100%" height="100%"}
+
+## Timeline: TestEm3 (Titan V) GPU region  {.smalltitle}
+
+![](img/nsys-overiview-gpu-zoom4-em3-titanv.png){fig-alt="Timeline view for TestEm3" width="100%" height="100%"}
+
+## Timeline: H100, Titan V, Titan RTX  {.smalltitle}
+
+![](img/nsys-comparison-postfree-g4-h100-titanv-titanrtx-2.25.png){fig-alt="Timeline view for simple cms " width="100%" height="100%"}
+
+# Code Annotation  {.divider .teal}
+
+## Code Annotation
+
++ [NVIDIA Tools Extension (NVTX)](https://github.com/NVIDIA/NVTX)
++ AMD [ROCTX](https://docs.amd.com/bundle/ROCTracer-User-Guide-v5.0-/page/ROCTX_Application_Code_Annotation.html)
+
+```{.cpp }
+
+void some_function() {
+
+    for (int i = 0; i < 6; ++i) {
+
+        std::this_thread::sleep_for(std::chrono::milliseconds{100});
+
+    }
+
+}
+```
+![](img/no-nvtx-sleep.png){fig-alt="Example with NVTX annotation, from FLAME GPU " width="100%" height="100%"}
+
+
+## Code Annotation
+
++ [NVIDIA Tools Extension (NVTX)](https://github.com/NVIDIA/NVTX)
++ AMD [ROCTX](https://docs.amd.com/bundle/ROCTracer-User-Guide-v5.0-/page/ROCTX_Application_Code_Annotation.html)
+
+```{.cpp code-line-numbers="1,3,5,7,9"}
+#include <nvtx3/nvToolsExt.h>
+void some_function() {
+    nvtxRangePush(__FUNCTION__);
+    for (int i = 0; i < 6; ++i) {
+        nvtxRangePush("inner")
+        std::this_thread::sleep_for(std::chrono::milliseconds{100});
+        nvtxRangePop();
+    }
+    nvtxRangePop();
+}
+```
+![](img/nvtx-sleep.png){fig-alt="Example with NVTX annotation, from FLAME GPU " width="100%" height="100%"}
+
+# Nsight Compute {.divider .teal}
+
+## Nsight Compute
+
++ Detailed GPU performance metrics
++ Compile with `-lineinfo` for line-level profiling
++ Capture full metrics via `--set=full`
++ Replays GPU kernels many times - significant runtime increase
++ Reduce captured kernels via filtering, `-s`, `-c` etc.
++ SM 70+ (Volta)
+
+```bash
+# All metrics, skip 64 kernels, capture 128.
+ncu --set=full -s 64 -c 128 -o metrics celer-g4 input.mac
+ncu-ui metrics.ncu-rep
+```
++ May require  `--target-processes`
++ Nvidia profiler counters require root or security mitigation disabling since 418.43 (2019-02-22). See [ERR_NVGPUCTRPERM](https://developer.nvidia.com/nvidia-development-tools-solutions-err_nvgpuctrperm-permission-issue-performance-counters).
+
+# Nsight Compute: TestEm3 (Titan V){.divider .flamingo}
+
+## TestEM3 kernel: Summary {.smalltitle}
+![](img/ncu-testem3-summary-titanv.png){fig-alt="Nsight Compute titanv for 2719th kernel invocatin" width="100% height=100%"}
+
+## TestEM3 2685th kernel: Speed of Light {.smalltitle}
+![](img/ncu-testem3-details-slowkernel-titanv.png){fig-alt="Nsight Compute slowkernel for 2719th kernel invocatin" width="100% height=100%"}
+
+## TestEM3 2719th kernel: Speed of Light {.smalltitle}
+![](img/ncu-testem3-119-speed-of-light-titanv.png){fig-alt="Nsight Compute speed for 2719th kernel invocatin" width="100% height=100%"}
+
+## TestEM3 2719th kernel: Roofline {.smalltitle}
+![](img/ncu-testem3-119-roofline-titanv.png){fig-alt="Nsight Compute roofline for 2719th kernel invocatin" width="100% height=100%"}
+
+## TestEM3 2719th kernel: Compute {.smalltitle}
+![](img/ncu-testem3-119-compute-titanv.png){fig-alt="Nsight Compute compute for 2719th kernel invocatin" width="100% height=100%"}
+
+## TestEM3 2719th kernel: Memory {.smalltitle}
+![](img/ncu-testem3-119-memory-titanv.png){fig-alt="Nsight Compute memory for 2719th kernel invocatin" width="100% height=100%"}
+
+## TestEM3 2719th kernel: Warp State {.smalltitle}
+![](img/ncu-testem3-119-warpstate-titanv.png){fig-alt="Nsight Compute warpstate for 2719th kernel invocatin" width="100% height=100%"}
+
+## TestEM3 2719th kernel: Occupancy {.smalltitle}
+![](img/ncu-testem3-119-occupancy-titanv.png){fig-alt="Nsight Compute occupancy for 2719th kernel invocatin" width="100% height=100%"}
+
+## TestEM3 2719th kernel: Source Counters {.smalltitle}
+![](img/ncu-testem3-119-sourcecounters-titanv.png){fig-alt="Nsight Compute sourcecounters for 2719th kernel invocatin" width="100% height=100%"}
+
++ Must be compiled with `-lineinfo`
+
+## TestEM3 2719th kernel: Source {.smalltitle}
+![](img/ncu-testem3-119-source-titanv.png){fig-alt="Nsight Compute source for 2719th kernel invocatin" width="100% height=100%"}
+
++ Must be compiled with `-lineinfo`
+
+
+# Profile your code {.divider .flamingo}
+
+
+<!-- ## Summary
+
++ Profile a realistic test case
++ Get an overview (host profiling, nsys)
++ Get details on specific kernels (ncu)
++ Re-evaluate after a change is made. -->
+
+
+# Additional Slides {.divider .coral visibility="uncounted"}
+
+## TestEm3 H100 {.smalltitle visibility="uncounted"}
+
+![](img/nsys-em3-overview-sort-duration-h100.png)
+
+## TestEm3 Titan V {.smalltitle visibility="uncounted"}
+
+![](img/nsys-em3-overview-sort-duration-titanv.png)
+
+
+## TestEm3 Titan RTX {.smalltitle visibility="uncounted"}
+
+![](img/nsys-em3-overview-sort-duration-titanrtx.png)
+
+
+## TestEM3 Titan RTX 2719th kernel: speed {.smalltitle visibility="uncounted"}
+![](img/ncu-testem3-119-speed-of-light-titanrtx.png){fig-alt="Nsight Compute speed for 2719th kernel invocatin" width="100% height=100%"}
+
+
+## Spack Compute Capability {visibility="uncounted"}
+
++ Spack only accepts a single `cuda_arch` value
++ Requires a full dependency rebuild (~90 mins)
+
+| Arch   | Variant                                 |
+|--------|-----------------------------------------|
+| Volta  | `variants: +cuda cuda_arch=70 cxxstd=17`|
+| Ampere | `variants: +cuda cuda_arch=80 cxxstd=17`|
+| Hopper | `variants: +cuda cuda_arch=90 cxxstd=17`|
+
+
+## Dockerfile `nsys` {visibility="uncounted"}
+
+`nvidia/cuda:11.8.0-devel-ubuntu22.04` does not include `nsys`
+
+Nsys 2022.4.2 (CUDA 11.8.0):
+
+```dockerfile
+# Install nsys for profiling. ncu is included
+RUN if [ "$DOCKERFILE_DISTRO" = "ubuntu" ] ; then \
+  apt-get -yqq update \
+  && apt-get -yqq install --no-install-recommends nsight-systems-2022.4.2 \
+  && rm -rf /var/lib/apt/lists/* ; \ 
+fi
+```
+
+* Note: nsys and ncu will be removed from the `-ci` containers, which are smaller for bandwidth reasons. 
+
+## Docker to Apptainer / Singularity {visibility="uncounted"}
+
++ apptainer/singularity build can convert docker files to apptainer images
++ from a registry via `apptainer build img.sif docker://registry/image:tag`
++ locally via deameon `apptainer build img.sif docker-deamon:registry/image:tag`
++ locally via docker archive files
++ https://apptainer.org/docs/user/main/docker_and_oci.html
+
+```bash
+# Build the appropriate container 
+cd celeritas/scripts/Docker
+# Build the cuda Docker container, sm_70. Wait ~90 minutes.
+./build.sh cuda
+# If the image hasn't been pushed to a registry, apptainer requires a local path, so save the image
+rm -f docker-temp.tar && docker save $(docker images --format="{{.Repository}} {{.ID}}" | grep "celeritas/dev-jammy-cuda11" | sort -rk 2 | awk 'NR==1{print $2}') -o image.tar
+# Convert to an apptainer container in the working dir
+apptainer build -F celeritas-dev-jammy-cuda11.sif docker-archive:image.tar
+```
+
+## Docker to Apptainer / Singularity {visibility="uncounted"}
+
++ Docker and Apptainer have different defaults when executing images
+  + Default directory bindings
+  + environment variable mapping
+  + in-container user
+  + entrypoints
++ Likely need to run with various flags to achieve similar behaviour
+
+## Docker to Apptainer / Singularity {visibility="uncounted"}
+
+```
+# ephemeral, does not bind home dir by default
+docker run --rm -ti --gpus all -v .:/src celeritas/dev-jammy-cuda11:2023-06-19
+# apptainer, runs as the current user, with the calling users env vars and default bidnings
+apptainer run --nv --bind ./:/celeritas-project celeritas-dev-jammy-cuda11-2023-06-19.sif 
+# TUoS HPC - this is not perfect
+apptainer run --nv --bind ./:/celeritas-project /mnt/parscratch/users/ac1phey/celeritas-dev-jammy-cuda11-sm90.sif
+```
+<!-- ## Apptainer Compilation {visibility="uncounted"}
+
+@todo - shorten container path
+
+```{.console}
+apptainer exec --nv ../../celeritas-dev-jammy-cuda11-2023-06-19.sif \
+  sh /etc/profile.d/celeritas_spack_env.sh && spack --version
+
+``` -->
+
+<!-- 
+## Compiling and run dev in docker  {visibility="uncounted"}
+
+```bash
+# Launch the dev container in docker, mounting the celeritas src dir to /src
+doccker...
+cd /src
+# Make a docker build dir, int he bind mounted dir (so it persists between docker sessions)
+mkdir -p build-docker && cd build-docker
+# configure CMake and build
+cmake ..
+cmake --build . -j `nproc`
+# run ctest
+ctest
+# Run the example to profile
+``` -->
+
+## lineinfo {visibility="uncounted"}
+
+Add `-lineinfo` to 
+
+```
+mkdir build-lineinfo && cd build-lineinfo
+cmake .. -DCMAKE_CUDA_ARCHITECTURES=70 -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_FLAGS_RELEASE="-O3 -DNDEBUG -lineinfo" -DCELERITAS_DEBUG=OFF 
+cmake --build . -j `nproc`
+```
