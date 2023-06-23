@@ -12,6 +12,9 @@ Quarto / reveal-js based presentation on "GPU ~~benchmarking~~ profiling of [Cel
 ## HTML
 
 ```bash
+# Render project-configured files
+quarto render
+# Render by filename 
 quarto render 2023-06-22-gpu-profiling-with-celeritas.qmd --to html
 ```
 
@@ -35,4 +38,6 @@ quarto preview 2023-06-22-gpu-profiling-with-celeritas.qmd
 
 ## Hosted via gh-pages
 
-@todo - see https://quarto.org/docs/output-formats/html-publishing.html
+gh-action based publication via `.github/workflows/publish.yml`
+
+See https://ptheywood.uk/2023-06-22-gpu-profiling-with-celeritas

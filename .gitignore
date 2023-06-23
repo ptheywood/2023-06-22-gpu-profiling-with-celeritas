@@ -6,3 +6,4 @@ unused/
 misc.md
 **venv/
 profiles/
+_build/

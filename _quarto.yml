@@ -1,0 +1,6 @@
+project:
+  output-dir: _build
+  render:
+    - 2023-06-22-gpu-profiling-with-celeritas.qmd
+execute:
+  freeze: auto
